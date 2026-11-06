@@ -1,10 +1,10 @@
 let link_api = "http://localhost:3000"
 
-async function buscar_produto(queryParams){
-     let rota = "/produtos"
+async function buscar_produtos(queryParams){
+     let rota = "/produto"
      const queryString = queryParams.toString();
      if (queryString){
-      rota+= "?" + queryString
+         rota+= "?" + queryString
      }
      const resposta = await fetch(link_api + rota);
 
