@@ -178,6 +178,10 @@ app.get("/produto/:id", async (req, res) => {
     }
 })
 
+app.post("/compra", autenticar, async (req, res) => {
+    
+})
+
 app.listen(port, () => {
     console.log('API rodando na porta ' + port)
 })
