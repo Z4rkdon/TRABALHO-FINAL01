@@ -24,6 +24,9 @@ const jwt = require("jsonwebtoken")
 const cors = require("cors")
 app.use(cors())
 
+const path = require("path")
+app.use("/img", express.static(path.join(__dirname, 'img')))
+
 app.post("/cliente", async (req, res) => {
     try {
         const cliente = req.body
@@ -148,22 +151,38 @@ app.get("/produto", async (req, res) => {
         let sql = "SELECT * FROM produto WHERE 1=1"
         const params = []
         const { busca, ordenacao } = req.query
-        let resultado
+
         if (busca) {
-            sql += " AND nome LIKE ?"
-            params.push(`%${busca}%`)
-        } 
-        if (ordenacao) {
-            if (ordenacao == "maior preco") {
-                sql += " ORDER BY preco DESC"
-            } else {
-                sql += " ORDER BY preco ASC"
-            }
+            sql += " AND (nome LIKE ? OR descricao LIKE ?)"
+            params.push(`%${busca}%`, `%${busca}%`)
         }
-        resultado = await db.pool.query(sql, params)
-        res.status(200).json(resultado[0])
+
+        if (ordenacao && !["menor preco", "maior preco", ""].includes(ordenacao)) {
+            const mapa = {
+                "controle":   "Controles",
+                "teclado":    "Periféricos",
+                "monitor":    "Monitores",
+                "jogo":       "Jogos",
+                "console":    "Consoles",
+                "assinatura": "Assinaturas"
+            }
+            const cat = mapa[ordenacao.toLowerCase()] || ordenacao
+            sql += " AND categoria LIKE ?"
+            params.push(`%${cat}%`)
+        }
+
+        if (ordenacao === "maior preco") {
+            sql += " ORDER BY preco DESC"
+        } else if (ordenacao === "menor preco") {
+            sql += " ORDER BY preco ASC"
+        } else {
+            sql += " ORDER BY nome ASC"
+        }
+
+        const [resultado] = await db.pool.query(sql, params)
+        res.status(200).json(resultado)
     } catch (error) {
-        res.status(500).json({erro: error.message})
+        res.status(500).json({ erro: error.message })
     }
 })
 
@@ -179,7 +198,110 @@ app.get("/produto/:id", async (req, res) => {
 })
 
 app.post("/compra", autenticar, async (req, res) => {
-    
+    const connection = await db.pool.getConnection()
+    try {
+        await connection.beginTransaction()
+
+        const { itens, forma_pagamento } = req.body
+
+        if (!itens || !Array.isArray(itens) || itens.length === 0) {
+            return res.status(400).json({ erro: "Envie uma lista de produtos em 'itens'" })
+        }
+
+        let valorTotal = 0
+        const itensValidados = []
+
+        // Valida cada produto e calcula o total
+        for (const item of itens) {
+            const [produtos] = await connection.query(
+                "SELECT id, preco FROM produto WHERE id = ?",
+                [item.id_produto]
+            )
+
+            if (produtos.length === 0) {
+                throw new Error(`Produto com id ${item.id_produto} não encontrado`)
+            }
+
+            const preco = Number(produtos[0].preco)
+            const quantidade = Number(item.quantidade) || 1
+
+            if (quantidade <= 0) {
+                throw new Error(`Quantidade inválida para o produto ${item.id_produto}`)
+            }
+
+            valorTotal += preco * quantidade
+            itensValidados.push({
+                id_produto: produtos[0].id,
+                quantidade,
+                valor_unitario: preco
+            })
+        }
+
+        // Insere a compra
+        const [compraResult] = await connection.query(
+            `INSERT INTO compra (id_cliente, forma_pagamento, valor_total)
+             VALUES (?, ?, ?)`,
+            [req.usuario.id, forma_pagamento || "Não informado", valorTotal]
+        )
+
+        const idCompra = compraResult.insertId
+
+        // Insere os itens da compra
+        for (const item of itensValidados) {
+            await connection.query(
+                `INSERT INTO item_compra (id_compra, id_produto, quantidade, valor_unitario)
+                 VALUES (?, ?, ?, ?)`,
+                [idCompra, item.id_produto, item.quantidade, item.valor_unitario]
+            )
+        }
+
+        await connection.commit()
+
+        res.status(201).json({
+            mensagem: "Compra registrada com sucesso!",
+            id_compra: idCompra,
+            valor_total: valorTotal
+        })
+    } catch (error) {
+        await connection.rollback()
+        res.status(500).json({ erro: error.message })
+    } finally {
+        connection.release()
+    }
+})
+
+// Lista todas as compras do usuário autenticado (com os itens)
+app.get("/compras", autenticar, async (req, res) => {
+    try {
+        const [compras] = await db.pool.query(
+            `SELECT id, data, forma_pagamento, valor_total
+             FROM compra
+             WHERE id_cliente = ?
+             ORDER BY data DESC`,
+            [req.usuario.id]
+        )
+
+        // Busca os itens de cada compra
+        for (const compra of compras) {
+            const [itens] = await db.pool.query(
+                `SELECT 
+                    ic.quantidade,
+                    ic.valor_unitario,
+                    p.id          AS id_produto,
+                    p.nome,
+                    p.caminho_img
+                 FROM item_compra ic
+                 JOIN produto p ON p.id = ic.id_produto
+                 WHERE ic.id_compra = ?`,
+                [compra.id]
+            )
+            compra.itens = itens
+        }
+
+        res.status(200).json(compras)
+    } catch (error) {
+        res.status(500).json({ erro: error.message })
+    }
 })
 
 app.listen(port, () => {

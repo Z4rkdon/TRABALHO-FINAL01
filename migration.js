@@ -56,7 +56,31 @@ INSERT INTO produto VALUES
 (43,'Jogo EA Sports FC 25 (PS5)','Simulador de futebol oficial com HyperMotionV e Ultimate Team.','Jogos',299.90,'assets/img/fc25.jpg',5),(44,'Assinatura PlayStation Plus Extra 12 meses','Acesso a catálogo de jogos, multiplayer online e descontos exclusivos.','Assinaturas',399.90,'assets/img/psplus-extra.jpg',10),
 (45,'Assinatura Xbox Game Pass Ultimate 12 meses','Mais de 100 jogos + EA Play + cloud gaming e multiplayer.','Assinaturas',499.90,'assets/img/gamepass-ultimate.jpg',8),(46,'Assinatura Nintendo Switch Online + Expansion 12m','Acesso a clássicos N64, Genesis e multiplayer online.','Assinaturas',249.90,'assets/img/switch-online.jpg',6),(47,'Gift Card Steam R$100','Crédito digital para a maior plataforma de jogos de PC do mundo.','Gift Cards',100.00,'assets/img/steam-100.jpg',20),(48,'Gift Card PlayStation Store R$100','Crédito para comprar jogos, DLCs e assinaturas na PS Store.','Gift Cards',100.00,'assets/img/psn-100.jpg',15),(49,'Base de Carregamento DualSense','Carregador oficial para dois controles DualSense simultaneamente.','Acessórios',249.90,'assets/img/base-dualsense.jpg',4),(50,'Case de Transporte Steam Deck','Case rígida oficial com interior acolchoado e bolso para acessórios.','Acessórios',299.00,'assets/img/case-steamdeck.jpg',3);
 `
+const ESTRUTURA_COMPRA = `
+DROP TABLE IF EXISTS item_compra;
+DROP TABLE IF EXISTS compra;
 
+CREATE TABLE compra (
+    id INT NOT NULL AUTO_INCREMENT,
+    id_cliente INT NOT NULL,
+    data DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    forma_pagamento VARCHAR(50) NOT NULL,
+    valor_total DECIMAL(10,2) NOT NULL,
+    PRIMARY KEY (id),
+    FOREIGN KEY (id_cliente) REFERENCES cliente(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE item_compra (
+    id INT NOT NULL AUTO_INCREMENT,
+    id_compra INT NOT NULL,
+    id_produto INT NOT NULL,
+    quantidade INT NOT NULL,
+    valor_unitario DECIMAL(10,2) NOT NULL,
+    PRIMARY KEY (id),
+    FOREIGN KEY (id_compra) REFERENCES compra(id) ON DELETE CASCADE,
+    FOREIGN KEY (id_produto) REFERENCES produto(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+`
 async function criar_tabelas() {
     const connection = await db.pool.getConnection();
     try {
